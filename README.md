@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Module 3 is intended for situations where GRSE has a short vessel specification/brief and needs a vessel-level cost estimate within a limited response time.
+Module 3 is intended for situations where the client has a short vessel specification/brief and needs a vessel-level cost estimate within a limited response time.
 
 The proposed solution uses the uploaded vessel specification together with publicly available internet information to identify comparable vessels, collect supporting cost evidence, perform specification-level matching, apply applicable cost adjustments, and generate a reviewable vessel-level estimate.
 
@@ -53,7 +53,7 @@ Vessel Parameters + Specification PDF
        Evidence & Assumptions
                 |
                 v
-        GRSE User Review/Edit
+        Client User Review/Edit
                 |
                 v
           Final Report
