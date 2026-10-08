@@ -1,22 +1,14 @@
 import json
 import re
 
-TEXT_PATH = "data/samples/energy_passion.txt"
+
+TEXT_PATH = r"C:\OCR_Test\module3_ocr_test.txt"
 OUTPUT_PATH = "data/output/vessel_profile.json"
 
 
 def load_text():
     with open(TEXT_PATH, "r", encoding="utf-8") as file:
         return file.read()
-
-
-def find_value_after_label(text, label, pattern):
-    match = re.search(
-        rf"{re.escape(label)}\s*[:\-]?\s*(?:\n\s*)?{pattern}",
-        text,
-        re.IGNORECASE
-    )
-    return match.group(1).strip() if match else None
 
 
 def normalize_number(value):
@@ -32,146 +24,439 @@ def normalize_number(value):
 
 
 def extract_profile(text):
+
     profile = {}
 
-    # Basic information
-    match = re.search(r"Name of ship:\s*(.+)", text, re.IGNORECASE)
-    profile["vessel_name"] = match.group(1).strip() if match else None
-
-    match = re.search(r"(Ulstein PX121[^\n]*)", text, re.IGNORECASE)
-    profile["design"] = match.group(1).strip() if match else None
-
-    if profile["design"]:
-        profile["design"] = profile["design"].replace(" DESIGN", "").strip()
+    # =========================================================
+    # VESSEL NAME
+    # =========================================================
 
     match = re.search(
-        r"TECHNICAL OUTLINE SPECIFICATION\s+(.+?VESSEL)",
+        r"91M\s+BUOY\s+MAINTENANCE\s+VESSEL",
         text,
-        re.IGNORECASE | re.DOTALL
+        re.IGNORECASE
     )
-    if match:
-        vessel_type = match.group(1).replace("\n", " ").strip()
-        profile["vessel_type"] = vessel_type
+
+    profile["vessel_name"] = (
+        match.group(0).strip()
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # DESIGN
+    # =========================================================
+
+    profile["design"] = profile["vessel_name"]
+
+
+    # =========================================================
+    # VESSEL TYPE
+    # =========================================================
+
+    cable_layer_match = re.search(
+        r"Cable\s+layer\s*-\s*future\s+provision",
+        text,
+        re.IGNORECASE
+    )
+
+    if cable_layer_match:
+        profile["vessel_type"] = (
+            "Buoy maintenance vessel "
+            "(Cable layer - future provision)"
+        )
     else:
-        profile["vessel_type"] = None
+        profile["vessel_type"] = "Buoy maintenance vessel"
 
-    match = re.search(r"Yard:\s*(.+)", text, re.IGNORECASE)
-    profile["yard"] = match.group(1).strip() if match else None
 
-    match = re.search(r"Delivered\s+(\d{2}/\d{2}/\d{4})", text, re.IGNORECASE)
-    if match:
-        profile["delivery_year"] = int(match.group(1)[-4:])
-    else:
-        profile["delivery_year"] = None
+    # =========================================================
+    # LENGTH OVERALL
+    # =========================================================
+    # OCR:
+    # 91.0M
+    # Length o a.
 
-    # Main dimensions
     match = re.search(
-        r"Length o\.a\.\s*:\s*(?:\n\s*)?([\d,.]+)\s*m",
+        r"(\d+(?:[.,]\d+)?)\s*M"
+        r"[ \t]*\n[ \t]*"
+        r"Length\s+o\s*a",
         text,
         re.IGNORECASE
     )
-    profile["length_overall_m"] = normalize_number(match.group(1)) if match else None
+
+    profile["length_overall_m"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # BREADTH
+    # =========================================================
+    # OCR:
+    # 18.20 M
+    # Breadth mouices
 
     match = re.search(
-        r"Breadth mld\.\s*:\s*(?:\n\s*)?([\d,.]+)\s*m",
+        r"(\d+(?:[.,]\d+)?)\s*M"
+        r"[ \t]*\n[ \t]*"
+        r"Breadth\s+(?:mouices|moulded)",
         text,
         re.IGNORECASE
     )
-    profile["breadth_m"] = normalize_number(match.group(1)) if match else None
+
+    profile["breadth_m"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # DEPTH
+    # =========================================================
+    # OCR:
+    # 7.80 M
+    # Depth
 
     match = re.search(
-        r"Design draft\s*:\s*(?:\n\s*)?([\d,.]+)\s*m",
+        r"(\d+(?:[.,]\d+)?)\s*M"
+        r"[ \t]*\n[ \t]*"
+        r"Depth",
         text,
         re.IGNORECASE
     )
-    profile["design_draft_m"] = normalize_number(match.group(1)) if match else None
 
-    # Tonnage
+    profile["depth_m"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # DESIGN DRAFT
+    # =========================================================
+    # OCR:
+    # Design draft max.
+    # 4.20 M
+
     match = re.search(
-        r"DWT\s*:\s*(?:\n\s*)?([\d,.]+)",
+        r"Design\s+draft\s+max\.?"
+        r"[\s\S]{0,30}?"
+        r"(\d+(?:[.,]\d+)?)\s*M",
         text,
         re.IGNORECASE
     )
-    profile["deadweight_t"] = normalize_number(match.group(1)) if match else None
+
+    profile["design_draft_m"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # DEADWEIGHT
+    # =========================================================
+    # OCR:
+    # Deadweight
+    # 1450 T (approx.)
 
     match = re.search(
-        r"Gross Tonnage\s*:\s*(?:\n\s*)?([\d,.]+)",
+        r"Deadweight"
+        r"[ \t]*\n[ \t]*"
+        r"(\d+(?:[.,]\d+)?)\s*T",
         text,
         re.IGNORECASE
     )
-    profile["gross_tonnage"] = normalize_number(match.group(1)) if match else None
+
+    profile["deadweight_t"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # DECK AREA
+    # =========================================================
+    # OCR:
+    # Deck area (aporox.)
+    # 700 MF
 
     match = re.search(
-        r"Net Tonnage\s*:\s*(?:\n\s*)?([\d,.]+)",
+        r"Deck\s+area"
+        r"[\s\S]{0,30}?"
+        r"(\d+(?:[.,]\d+)?)\s*M[F²2]?",
         text,
         re.IGNORECASE
     )
-    profile["net_tonnage"] = normalize_number(match.group(1)) if match else None
 
-    # Deck area
-    match = re.search(
-        r"Work/Cargo Deck area:\s*([\d,.]+)\s*m2",
-        text,
-        re.IGNORECASE
+    profile["deck_area_m2"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
     )
-    profile["deck_area_m2"] = normalize_number(match.group(1)) if match else None
 
+
+    # =========================================================
+    # SERVICE SPEED
+    # =========================================================
+    # OCR:
     # Service speed
+    # 12 Knots
+
     match = re.search(
-        r"Service speed/cons\.[\s\S]{0,300}?(\d+(?:[.,]\d+)?)\s*kts",
+        r"Service\s+speed"
+        r"[ \t]*\n[ \t]*"
+        r"(\d+(?:[.,]\d+)?)\s*Knots?",
         text,
         re.IGNORECASE
     )
+
     profile["service_speed_knots"] = (
-        normalize_number(match.group(1)) if match else None
+        normalize_number(match.group(1))
+        if match
+        else None
     )
 
-    # Main engine
-    match = re.search(
-        r"Main engine\s*:\s*(.+)",
-        text,
-        re.IGNORECASE
-    )
-    profile["main_engine"] = match.group(1).strip() if match else None
 
+    # =========================================================
+    # PROPULSION
+    # =========================================================
+    # OCR:
     # Propulsion
+    # Twin azimuth thruster (diesel electric)
+
     match = re.search(
-        r"Propulsion\s*:\s*(.+)",
+        r"Twin\s+azimuth\s+thruster\s*"
+        r"\(diesel\s+electric\)",
         text,
         re.IGNORECASE
     )
-    profile["propulsion"] = match.group(1).strip() if match else None
 
-    # Tunnel thrusters
+    profile["propulsion"] = (
+        match.group(0).strip()
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # PROPULSION MOTOR
+    # =========================================================
+    # OCR:
+    # Propulsion motor
+    # 2 nos. x 1200 kW
+
     match = re.search(
-        r"Bow thruster:\s*(.+)",
+        r"Propulsion\s+motor"
+        r"\s*\n\s*"
+        r"(\d+)\s*(?:nos?\.?\s*)?"
+        r"[x×]\s*"
+        r"(\d+(?:[.,]\d+)?)\s*kW",
         text,
         re.IGNORECASE
     )
-    profile["tunnel_thrusters"] = match.group(1).strip() if match else None
 
-    # Classification
+    if match:
+        profile["propulsion_motor"] = (
+            f"{match.group(1)} x "
+            f"{match.group(2)} kW"
+        )
+    else:
+        profile["propulsion_motor"] = None
+
+
+    # =========================================================
+    # MAIN GENERATOR
+    # =========================================================
+    # OCR:
+    # 4 nos. × 2000 ekW. 415V, 50 Hz. 3 phase
+    # Main generator
+
     match = re.search(
-        r"Classification:\s*(?:\n\s*)?([^\n]+)",
+        r"(\d+)\s*(?:nos?\.?\s*)?"
+        r"[x×]\s*"
+        r"(\d+(?:[.,]\d+)?)\s*ekW"
+        r"[^\n]*"
+        r"\n[ \t]*"
+        r"Main\s+generator",
         text,
         re.IGNORECASE
     )
-    profile["classification"] = match.group(1).strip() if match else None
 
-    profile["source_document"] = "energy_passion_clean.pdf"
+    if match:
+        profile["main_generator"] = (
+            f"{match.group(1)} x "
+            f"{match.group(2)} ekW"
+        )
+    else:
+        profile["main_generator"] = None
+
+
+    # =========================================================
+    # BOW / TUNNEL THRUSTER
+    # =========================================================
+    # OCR:
+    # 1 no x 900 kW (motor driven)
+    # Bow thruster
+
+    match = re.search(
+        r"(\d+)\s*(?:nos?\.?\s*)?"
+        r"[x×]\s*"
+        r"(\d+(?:[.,]\d+)?)\s*kW"
+        r"\s*\(motor\s+driven\)"
+        r"\s*\n[ \t]*"
+        r"Bow\s+thruster",
+        text,
+        re.IGNORECASE
+    )
+
+    if match:
+        profile["tunnel_thrusters"] = (
+            f"{match.group(1)} x "
+            f"{match.group(2)} kW"
+        )
+    else:
+        profile["tunnel_thrusters"] = None
+
+
+    # =========================================================
+    # FRESH WATER
+    # =========================================================
+    # OCR:
+    # 400 M³ (approx.)
+    # Fresh water
+
+    match = re.search(
+        r"(\d+(?:[.,]\d+)?)\s*M[³3]"
+        r"[\s\S]{0,30}?"
+        r"Fresh\s+water",
+        text,
+        re.IGNORECASE
+    )
+
+    profile["fresh_water_m3"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # FUEL OIL
+    # =========================================================
+    # OCR:
+    # Fuel oil
+    # 300 M³ (approx.)
+
+    match = re.search(
+        r"Fuel\s+oil"
+        r"[ \t]*\n[ \t]*"
+        r"(\d+(?:[.,]\d+)?)\s*M[³3]",
+        text,
+        re.IGNORECASE
+    )
+
+    profile["fuel_oil_m3"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # WATER BALLAST
+    # =========================================================
+    # OCR:
+    # Water ballast
+    # 1500 M³ (approx.)
+
+    match = re.search(
+        r"Water\s+ballast"
+        r"[ \t]*\n[ \t]*"
+        r"(\d+(?:[.,]\d+)?)\s*M[³3]",
+        text,
+        re.IGNORECASE
+    )
+
+    profile["water_ballast_m3"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # CARGO HOLD
+    # =========================================================
+    # OCR:
+    # Cargo hola
+    # 700 M³ (approx.)
+
+    match = re.search(
+        r"(?:Cargo\s+hola|Cargo\s+hold)"
+        r"[\s\S]{0,30}?"
+        r"(\d+(?:[.,]\d+)?)\s*M[³3]",
+        text,
+        re.IGNORECASE
+    )
+
+    profile["cargo_hold_m3"] = (
+        normalize_number(match.group(1))
+        if match
+        else None
+    )
+
+
+    # =========================================================
+    # OTHER FIELDS
+    # =========================================================
+
+    profile["classification"] = None
+    profile["delivery_year"] = None
+
+    profile["source_document"] = (
+        "OCR extracted vessel specification"
+    )
 
     return profile
 
 
+# =============================================================
+# MAIN
+# =============================================================
+
 if __name__ == "__main__":
+
     text = load_text()
+
     profile = extract_profile(text)
 
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as file:
-        json.dump(profile, file, indent=2, ensure_ascii=False)
+    with open(
+        OUTPUT_PATH,
+        "w",
+        encoding="utf-8"
+    ) as file:
 
-    print("\nVessel profile extracted successfully.")
-    print(f"Saved to: {OUTPUT_PATH}\n")
+        json.dump(
+            profile,
+            file,
+            indent=2,
+            ensure_ascii=False
+        )
+
+    print(
+        "\nVessel profile extracted successfully."
+    )
+
+    print(
+        f"Saved to: {OUTPUT_PATH}\n"
+    )
 
     print("Extracted Profile:")
 

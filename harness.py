@@ -4,6 +4,7 @@ import sys
 
 PIPELINE = [
     ("PDF Extraction", "pdf_extractor.py"),
+    ("Vessel Profile Extraction", "vessel_profile_extractor.py"),
     ("Web Search", "web_search.py"),
     ("Source Verification", "source_verifier.py"),
     ("Cost Extraction", "cost_extractor.py"),
@@ -89,7 +90,11 @@ def run_pipeline():
     )
 
     print(
-        "- data/samples/energy_passion.txt"
+        "- C:\\OCR_Test\\module3_ocr_test.txt"
+    )
+
+    print(
+        "- data/output/vessel_profile.json"
     )
 
     print(

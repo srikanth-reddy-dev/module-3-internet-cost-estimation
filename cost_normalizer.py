@@ -1,126 +1,351 @@
 import json
-import re
 
 
 COST_PATH = "data/output/cost_evidence.json"
+MATCH_PATH = "data/output/spec_matches.json"
 NORMALIZED_PATH = "data/output/normalized_costs.json"
 
 
 def load_json(path):
-    with open(path, "r", encoding="utf-8") as file:
+    with open(
+        path,
+        "r",
+        encoding="utf-8"
+    ) as file:
         return json.load(file)
 
 
-def parse_cost(cost_text):
+def normalize_cost_evidence(
+    cost_evidence
+):
     """
-    Convert values such as:
-    $41m
-    $42m
-    USD 41 million
-    USD 42 million
+    Normalize extracted vessel cost evidence.
 
-    into a numeric USD million value.
+    Current source data is primarily in MYR.
+
+    This stage does NOT:
+    - convert currencies
+    - adjust for inflation
+    - adjust for vessel specification differences
+    - estimate the target vessel cost
+
+    Those operations belong to later pipeline stages.
     """
 
-    text = cost_text.strip().lower()
-
-    match = re.search(
-        r"(?:us\$|usd|\$)\s*(\d+(?:\.\d+)?)\s*(million|m|billion|bn)",
-        text
-    )
-
-    if not match:
-        return None
-
-    value = float(match.group(1))
-    unit = match.group(2)
-
-    if unit in ["billion", "bn"]:
-        value = value * 1000
-
-    return value
-
-
-def normalize_cost_evidence(cost_evidence):
     normalized = []
 
     for source in cost_evidence:
 
-        costs = []
-
-        for item in source.get("costs_found", []):
-            cost_text = item.get("cost")
-            cost_value = parse_cost(cost_text)
-
-            if cost_value is not None:
-                costs.append(cost_value)
-
-        if not costs:
-            continue
-
-        cost_min = min(costs)
-        cost_max = max(costs)
-
-        cost_midpoint = round(
-            (cost_min + cost_max) / 2,
-            2
+        reported_cost = source.get(
+            "reported_cost"
         )
 
+        currency = source.get(
+            "currency"
+        )
+
+        if reported_cost is None:
+            continue
+
+        if not currency:
+            continue
+
         normalized.append({
-            "vessel": "Ulstein PX121",
-            "cost_min_million_usd": cost_min,
-            "cost_max_million_usd": cost_max,
-            "cost_midpoint_million_usd": cost_midpoint,
-            "currency": "USD",
-            "cost_unit": "million",
-            "cost_year": 2024,
-            "cost_type": "Newbuilding slot / asking price",
+            "vessel": (
+                "91M Maintenance/Work Vessel "
+                "(Shin Yang / Dayang)"
+            ),
+
+            "reported_cost": reported_cost,
+
+            "currency": currency,
+
+            "cost_million": round(
+                reported_cost / 1_000_000,
+                4
+            ),
+
+            "cost_year": source.get(
+                "year"
+            ),
+
+            "cost_type": (
+                "Reported vessel purchase "
+                "consideration"
+            ),
+
             "scope": "Per vessel",
-            "limitation": "Excluding option items",
-            "source_title": source.get("title"),
-            "source_url": source.get("url"),
-            "evidence": source.get("costs_found")
+
+            "amount_type": source.get(
+                "amount_type"
+            ),
+
+            "raw_cost_text": source.get(
+                "raw_cost_text"
+            ),
+
+            "source_title": source.get(
+                "source_title"
+            ),
+
+            "source_url": source.get(
+                "source_url"
+            ),
+
+            "verified": source.get(
+                "verified",
+                False
+            ),
+
+            "relevance_matches": source.get(
+                "relevance_matches",
+                []
+            )
         })
 
     return normalized
 
 
-if __name__ == "__main__":
+def select_primary_comparable(
+    normalized_costs
+):
+    """
+    Select the strongest cost record.
 
-    cost_evidence = load_json(COST_PATH)
+    Preference is given to:
+    1. Official Shin Yang source
+    2. Exact 2026 transaction
+    3. Main RM117.7M reported value
+    """
 
-    normalized_costs = normalize_cost_evidence(
-        cost_evidence
+    if not normalized_costs:
+        return None
+
+    def score(item):
+
+        score_value = 0
+
+        url = str(
+            item.get(
+                "source_url"
+            ) or ""
+        ).lower()
+
+        title = str(
+            item.get(
+                "source_title"
+            ) or ""
+        ).lower()
+
+        if "shinyanggroup.com.my" in url:
+            score_value += 100
+
+        if "91m maintenance" in title:
+            score_value += 50
+
+        if item.get(
+            "reported_cost"
+        ) == 117700000:
+            score_value += 40
+
+        if item.get(
+            "cost_year"
+        ) == 2026:
+            score_value += 20
+
+        if item.get(
+            "currency"
+        ) == "MYR":
+            score_value += 10
+
+        return score_value
+
+    return max(
+        normalized_costs,
+        key=score
     )
 
-    with open(NORMALIZED_PATH, "w", encoding="utf-8") as file:
+
+def build_normalized_output(
+    normalized_costs
+):
+    """
+    Build final normalized-cost output.
+
+    The primary comparable is explicitly identified,
+    while supporting cost evidence is retained.
+    """
+
+    primary = select_primary_comparable(
+        normalized_costs
+    )
+
+    return {
+        "primary_comparable": primary,
+
+        "normalized_costs": normalized_costs,
+
+        "count": len(
+            normalized_costs
+        ),
+
+        "normalization_notes": [
+            (
+                "Costs are preserved in the "
+                "original reported currency."
+            ),
+            (
+                "No currency conversion is performed "
+                "at this stage."
+            ),
+            (
+                "No inflation adjustment is performed "
+                "at this stage."
+            ),
+            (
+                "No vessel specification adjustment "
+                "is performed at this stage."
+            ),
+            (
+                "The primary comparable is the "
+                "verified 2026 Shin Yang / Dayang "
+                "91M Maintenance/Work Vessel."
+            )
+        ]
+    }
+
+
+def main():
+
+    # =====================================================
+    # LOAD COST EVIDENCE
+    # =====================================================
+
+    cost_data = load_json(
+        COST_PATH
+    )
+
+    cost_evidence = cost_data.get(
+        "cost_evidence",
+        []
+    )
+
+    # =====================================================
+    # NORMALIZE
+    # =====================================================
+
+    normalized_costs = (
+        normalize_cost_evidence(
+            cost_evidence
+        )
+    )
+
+    # =====================================================
+    # BUILD OUTPUT
+    # =====================================================
+
+    output = build_normalized_output(
+        normalized_costs
+    )
+
+    # =====================================================
+    # SAVE
+    # =====================================================
+
+    with open(
+        NORMALIZED_PATH,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
         json.dump(
-            normalized_costs,
+            output,
             file,
             indent=2,
             ensure_ascii=False
         )
 
+    # =====================================================
+    # PRINT SUMMARY
+    # =====================================================
+
     print(
-        f"Saved {len(normalized_costs)} normalized cost records "
-        f"to: {NORMALIZED_PATH}"
+        "\n" + "=" * 60
     )
 
-    for cost in normalized_costs:
-        print("\nVessel:", cost["vessel"])
+    print(
+        "COST NORMALIZATION"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    print(
+        f"Normalized cost records: "
+        f"{len(normalized_costs)}"
+    )
+
+    primary = output.get(
+        "primary_comparable"
+    )
+
+    if primary:
+
         print(
-            "Cost Range:",
-            cost["cost_min_million_usd"],
-            "-",
-            cost["cost_max_million_usd"],
-            "million USD"
+            "\nPRIMARY COMPARABLE"
         )
+
         print(
-            "Midpoint:",
-            cost["cost_midpoint_million_usd"],
-            "million USD"
+            f"Vessel: "
+            f"{primary.get('vessel')}"
         )
-        print("Year:", cost["cost_year"])
-        print("Type:", cost["cost_type"])
-        print("Scope:", cost["scope"])
-        print("Limitation:", cost["limitation"])
+
+        print(
+            f"Cost: "
+            f"{primary.get('raw_cost_text')}"
+        )
+
+        print(
+            f"Numeric: "
+            f"{primary.get('reported_cost')}"
+        )
+
+        print(
+            f"Currency: "
+            f"{primary.get('currency')}"
+        )
+
+        print(
+            f"Cost Million: "
+            f"{primary.get('cost_million')}"
+        )
+
+        print(
+            f"Year: "
+            f"{primary.get('cost_year')}"
+        )
+
+        print(
+            f"Type: "
+            f"{primary.get('cost_type')}"
+        )
+
+        print(
+            f"Source: "
+            f"{primary.get('source_title')}"
+        )
+
+        print(
+            f"URL: "
+            f"{primary.get('source_url')}"
+        )
+
+    print(
+        "\nSaved normalized costs to: "
+        f"{NORMALIZED_PATH}"
+    )
+
+
+if __name__ == "__main__":
+    main()
