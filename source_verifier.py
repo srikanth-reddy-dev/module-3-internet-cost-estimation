@@ -1,4 +1,6 @@
 import json
+import sys
+
 import requests
 from bs4 import BeautifulSoup
 from io import BytesIO
@@ -9,11 +11,44 @@ RESULTS_PATH = "data/output/search_results.json"
 VERIFIED_PATH = "data/output/verified_sources.json"
 
 
+def configure_console_encoding():
+    """
+    Configure Windows console output/input as UTF-8
+    so Unicode characters in URLs, titles, and errors
+    do not crash the pipeline.
+    """
+
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(
+                encoding="utf-8",
+                errors="replace"
+            )
+
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(
+                encoding="utf-8",
+                errors="replace"
+            )
+
+    except Exception:
+        pass
+
+
 def load_search_results():
-    with open(RESULTS_PATH, "r", encoding="utf-8") as file:
+
+    with open(
+        RESULTS_PATH,
+        "r",
+        encoding="utf-8"
+    ) as file:
+
         data = json.load(file)
 
-    return data.get("results", [])
+    return data.get(
+        "results",
+        []
+    )
 
 
 def extract_pdf_text(content):
@@ -21,22 +56,29 @@ def extract_pdf_text(content):
     Extract text from a PDF response.
     """
 
-    reader = PdfReader(BytesIO(content))
+    reader = PdfReader(
+        BytesIO(content)
+    )
 
     pages = []
 
     for page in reader.pages:
 
         try:
+
             page_text = page.extract_text()
 
             if page_text:
-                pages.append(page_text)
+                pages.append(
+                    page_text
+                )
 
         except Exception:
             continue
 
-    return "\n".join(pages)
+    return "\n".join(
+        pages
+    )
 
 
 def extract_html_text(content):
@@ -51,12 +93,18 @@ def extract_html_text(content):
 
     # Remove non-content elements.
     for element in soup(
-        ["script", "style", "noscript"]
+        [
+            "script",
+            "style",
+            "noscript"
+        ]
     ):
         element.decompose()
 
     title = (
-        soup.title.get_text(strip=True)
+        soup.title.get_text(
+            strip=True
+        )
         if soup.title
         else None
     )
@@ -97,7 +145,9 @@ def verify_source(url):
             }
         )
 
-        result["status_code"] = response.status_code
+        result["status_code"] = (
+            response.status_code
+        )
 
         result["content_type"] = (
             response.headers.get(
@@ -115,20 +165,25 @@ def verify_source(url):
 
             return result
 
-
         content_type = (
             response.headers
-            .get("Content-Type", "")
+            .get(
+                "Content-Type",
+                ""
+            )
             .lower()
         )
 
-        clean_url = url.lower().split("?")[0]
+        clean_url = (
+            url
+            .lower()
+            .split("?")[0]
+        )
 
         is_pdf = (
             "application/pdf" in content_type
             or clean_url.endswith(".pdf")
         )
-
 
         # =====================================================
         # PDF
@@ -141,10 +196,12 @@ def verify_source(url):
             )
 
             result["verified"] = True
-            result["text_preview"] = text
+
+            result["text_preview"] = (
+                text
+            )
 
             return result
-
 
         # =====================================================
         # HTML
@@ -155,22 +212,30 @@ def verify_source(url):
         )
 
         result["verified"] = True
-        result["title"] = title
-        result["text_preview"] = text
+
+        result["title"] = (
+            title
+        )
+
+        result["text_preview"] = (
+            text
+        )
 
         return result
-
 
     except requests.RequestException as error:
 
-        result["error"] = str(error)
+        result["error"] = str(
+            error
+        )
 
         return result
 
-
     except Exception as error:
 
-        result["error"] = str(error)
+        result["error"] = str(
+            error
+        )
 
         return result
 
@@ -217,7 +282,6 @@ def source_priority(result):
 
     score = 0
 
-
     # =====================================================
     # OFFICIAL SHIN YANG
     # =====================================================
@@ -225,10 +289,8 @@ def source_priority(result):
     if "shinyanggroup.com.my" in url:
         score += 100
 
-
     if "shin yang" in combined:
         score += 20
-
 
     # =====================================================
     # TARGET VESSEL
@@ -237,14 +299,11 @@ def source_priority(result):
     if "91m maintenance" in combined:
         score += 20
 
-
     if "maintenance/work vessel" in combined:
         score += 20
 
-
     if "91m" in combined:
         score += 10
-
 
     # =====================================================
     # COST EVIDENCE
@@ -253,26 +312,20 @@ def source_priority(result):
     if "rm117,696,000" in combined:
         score += 50
 
-
     if "rm117.7" in combined:
         score += 30
-
 
     if "117.7 million" in combined:
         score += 30
 
-
     if "purchase consideration" in combined:
         score += 20
-
 
     if "sale and purchase agreement" in combined:
         score += 15
 
-
     if "construction, build and sale" in combined:
         score += 10
-
 
     # =====================================================
     # SECONDARY RELIABLE SOURCES
@@ -281,39 +334,47 @@ def source_priority(result):
     if "thestar.com.my" in url:
         score += 15
 
-
     if "klsescreener.com" in url:
         score += 10
-
 
     return score
 
 
 def main():
 
+    configure_console_encoding()
+
     results = load_search_results()
 
     verified_results = []
 
+    print(
+        "\n" + "=" * 60
+    )
 
-    print("\n" + "=" * 60)
-    print("SOURCE VERIFICATION")
-    print("=" * 60)
+    print(
+        "SOURCE VERIFICATION"
+    )
 
+    print(
+        "=" * 60
+    )
 
-    total = len(results)
-
+    total = len(
+        results
+    )
 
     for index, result in enumerate(
         results,
         start=1
     ):
 
-        url = result.get("url")
+        url = result.get(
+            "url"
+        )
 
         if not url:
             continue
-
 
         print(
             f"\n[{index}/{total}] "
@@ -324,36 +385,31 @@ def main():
             f"URL: {url}"
         )
 
-
         verification = verify_source(
             url
         )
-
 
         verified_result = {
             **result,
             "verification": verification
         }
 
-
         verified_results.append(
             verified_result
         )
-
 
         if verification.get(
             "verified",
             False
         ):
             status = "Verified"
+
         else:
             status = "Not Verified"
-
 
         print(
             f"Status: {status}"
         )
-
 
         if verification.get(
             "status_code"
@@ -364,7 +420,6 @@ def main():
                 f"{verification['status_code']}"
             )
 
-
         if verification.get(
             "title"
         ):
@@ -373,7 +428,6 @@ def main():
                 f"Title: "
                 f"{verification['title']}"
             )
-
 
         if verification.get(
             "error"
@@ -384,7 +438,6 @@ def main():
                 f"{verification['error']}"
             )
 
-
     # =====================================================
     # RANK RESULTS
     # =====================================================
@@ -393,7 +446,6 @@ def main():
         key=source_priority,
         reverse=True
     )
-
 
     # =====================================================
     # SAVE
@@ -412,7 +464,6 @@ def main():
             ensure_ascii=False
         )
 
-
     # =====================================================
     # SUMMARY
     # =====================================================
@@ -421,24 +472,31 @@ def main():
         1
         for result in verified_results
         if (
-            result.get("verification") or {}
+            result.get(
+                "verification"
+            ) or {}
         ).get(
             "verified",
             False
         )
     )
 
-
     not_verified_count = (
         len(verified_results)
         - verified_count
     )
 
+    print(
+        "\n" + "=" * 60
+    )
 
-    print("\n" + "=" * 60)
-    print("VERIFICATION SUMMARY")
-    print("=" * 60)
+    print(
+        "VERIFICATION SUMMARY"
+    )
 
+    print(
+        "=" * 60
+    )
 
     print(
         f"Total sources: "
@@ -460,20 +518,22 @@ def main():
         f"{VERIFIED_PATH}"
     )
 
-
     # =====================================================
     # TOP VERIFIED SOURCES
     # =====================================================
 
-    print("\nTOP VERIFIED SOURCES:")
+    print(
+        "\nTOP VERIFIED SOURCES:"
+    )
 
     shown = 0
-
 
     for result in verified_results:
 
         verification = (
-            result.get("verification") or {}
+            result.get(
+                "verification"
+            ) or {}
         )
 
         if not verification.get(
@@ -482,9 +542,7 @@ def main():
         ):
             continue
 
-
         shown += 1
-
 
         print(
             f"\n{shown}. "
@@ -500,7 +558,6 @@ def main():
             f"   Score: "
             f"{source_priority(result)}"
         )
-
 
         if shown >= 10:
             break

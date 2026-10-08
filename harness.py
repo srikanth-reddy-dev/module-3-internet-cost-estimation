@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 
@@ -17,6 +18,21 @@ PIPELINE = [
 ]
 
 
+def configure_environment():
+    """
+    Configure child Python processes to use UTF-8.
+
+    This prevents Windows cp1252 decoding errors when
+    subprocess output contains Unicode characters.
+    """
+
+    environment = os.environ.copy()
+
+    environment["PYTHONIOENCODING"] = "utf-8"
+
+    return environment
+
+
 def run_step(step_name, script_name):
 
     print("\n" + "=" * 60)
@@ -26,7 +42,10 @@ def run_step(step_name, script_name):
     result = subprocess.run(
         [sys.executable, script_name],
         capture_output=True,
-        text=True
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=configure_environment()
     )
 
     if result.stdout:
